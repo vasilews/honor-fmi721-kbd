@@ -20,6 +20,7 @@ static const u8 brightness_to_ec[] = { 0x02, 0x03, 0x04 };
 struct honor_kbd_data {
 	struct led_classdev led;
 	struct wmi_device *wdev;
+	enum led_brightness last_brightness;
 };
 
 static const struct dmi_system_id honor_dmi_table[] = {
@@ -65,23 +66,30 @@ static enum led_brightness kbd_backlight_get(struct led_classdev *led_cdev)
 	return ec_val_to_brightness(val);
 }
 
-static void honor_wmi_notify(struct wmi_device *wdev,
-			     union acpi_object *obj)
+static void honor_wmi_notify(struct wmi_device *wdev, union acpi_object *obj)
 {
 	struct honor_kbd_data *data = dev_get_drvdata(&wdev->dev);
-	u8 val;
 	enum led_brightness brightness;
 
-	if (ec_read(EC_OFFSET, &val) == 0) {
-		brightness = ec_val_to_brightness(val);
+	if (!obj || obj->type != ACPI_TYPE_INTEGER)
+		return;
 
-		led_classdev_notify_brightness_hw_changed(&data->led,
-							  brightness);
-
-		dev_dbg(&wdev->dev,
-			"Brightness changed to %d (EC=0x%02x)\n",
-			brightness, val);
+	switch (obj->integer.value) {
+	case 0x2b1:
+		brightness = 0;
+		break;
+	case 0x2b2:
+		brightness = 1;
+		break;
+	case 0x2b3:
+		brightness = 2;
+		break;
+	default:
+		return;
 	}
+
+	data->led.brightness = brightness;
+	led_classdev_notify_brightness_hw_changed(&data->led, brightness);
 }
 
 static int honor_wmi_probe(struct wmi_device *wdev, const void *context)
@@ -134,7 +142,7 @@ static void honor_wmi_remove(struct wmi_device *wdev)
 
 static const struct wmi_device_id honor_wmi_id_table[] = {
 	{ HONOR_WMI_EVENT_GUID, NULL },
-	{ }
+	{}
 };
 MODULE_DEVICE_TABLE(wmi, honor_wmi_id_table);
 
